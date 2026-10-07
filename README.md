@@ -90,7 +90,7 @@ The container currently has a memory limit of:
 | 05 | Memory pressure | Completed |
 | 06 | Log growth and disk pressure | Completed |
 | 07 | DNS resolution failure | Completed |
-| 08 | Network connectivity failure | Planned |
+| 08 | Internal network connectivity failure | Completed |
 
 ## Completed Incidents
 
@@ -277,32 +277,7 @@ Full report:
 
 The container lost hostname resolution while general TCP connectivity remained functional.
 
-Normal DNS:
-
-```text
-example.com -> IP address
-```
-
-After changing the resolver:
-
-```text
-socket.gaierror:
-Temporary failure in name resolution
-```
-
-However, direct TCP connectivity still worked:
-
-```text
-TCP 1.1.1.1:443 = OK
-```
-
-The application also remained:
-
-```text
-healthy
-```
-
-The diagnosis was therefore:
+During the failure:
 
 ```text
 DNS           FAIL
@@ -310,15 +285,15 @@ TCP           OK
 Application   OK
 ```
 
-The container resolver had been changed from Docker's internal resolver:
+The resolver had been changed from Docker's internal resolver:
 
 ```text
 127.0.0.11
 ```
 
-to a non-functional resolver.
+to a non-functional nameserver.
 
-After restoring the original resolver:
+After restoration:
 
 ```text
 DNS           OK
@@ -327,19 +302,76 @@ Application   OK
 Container     healthy
 ```
 
-This incident demonstrated how to distinguish:
-
-```text
-DNS failure
-vs
-TCP failure
-vs
-Application failure
-```
-
 Full report:
 
 [Incident 07 — DNS Resolution Failure](incidents/07-dns-resolution-failure.md)
+
+---
+
+### Incident 08 — Internal Network Connectivity Failure
+
+A dependency container remained running and resolvable through Docker DNS, but its service stopped listening on TCP port `9090`.
+
+Baseline:
+
+```text
+DNS          OK
+TCP :9090    OK
+HTTP         200
+Main app     OK
+```
+
+After the dependency HTTP process was terminated:
+
+```text
+Container dependency   running
+DNS                    OK
+TCP :9090              FAIL
+Main app               OK
+```
+
+The observed TCP error was:
+
+```text
+ConnectionRefusedError: [Errno 111] Connection refused
+```
+
+Process inspection showed that:
+
+```text
+python -m http.server 9090
+```
+
+was no longer running.
+
+The container itself remained alive because:
+
+```text
+tail -f /dev/null
+```
+
+continued running.
+
+This demonstrated:
+
+```text
+Container running != Service listening
+```
+
+The service was restarted and verified:
+
+```text
+DNS          OK
+TCP :9090    OK
+HTTP         200
+Main app     OK
+```
+
+The temporary dependency container was removed after the test.
+
+Full report:
+
+[Incident 08 — Internal Network Connectivity Failure](incidents/08-network-connectivity-failure.md)
 
 ## Troubleshooting Method
 
@@ -361,10 +393,10 @@ DNS
 Network
     |
     v
-Port Publishing
+TCP Port
     |
     v
-Host
+HTTP
     |
     v
 Client
@@ -393,6 +425,7 @@ Health endpoint ok  != CPU usage normal
 Health endpoint ok  != Memory usage normal
 Health endpoint ok  != Disk usage normal
 DNS failure         != Network outage
+Container running   != Service listening
 ```
 
 ## Technologies
@@ -409,21 +442,33 @@ Current technologies:
 - filesystem inspection
 - DNS troubleshooting
 - TCP connectivity testing
+- HTTP connectivity testing
+- Docker service discovery
 - container resource limits
-- HTTP
-- TCP/IP
 - Git
 - PowerShell
 
-Planned additions:
+## Commands Practiced
 
-- additional network diagnostics
-- Prometheus
-- Grafana
-- GitHub Actions
-- AWS CloudWatch
-- AWS ECS
-- Terraform
+The lab uses operational commands including:
+
+```text
+docker ps
+docker logs
+docker inspect
+docker exec
+docker top
+docker stats
+docker ps -s
+df
+du
+ls
+cat
+/proc
+socket.gethostbyname
+socket.create_connection
+Invoke-RestMethod
+```
 
 ## Run the Lab
 
@@ -513,6 +558,7 @@ CLOUD-OPERATIONS-LAB/
 |   +-- 05-memory-pressure.md
 |   +-- 06-log-growth-disk-pressure.md
 |   +-- 07-dns-resolution-failure.md
+|   +-- 08-network-connectivity-failure.md
 |
 +-- docs/
 |   +-- images/
@@ -547,24 +593,25 @@ Each incident contains:
 
 This lab demonstrates practical work with:
 
+- Linux troubleshooting
 - container troubleshooting
 - Docker networking
+- Docker DNS
+- service discovery
+- TCP connectivity
+- HTTP connectivity
 - port publishing
 - Docker health checks
 - application health checks
 - process troubleshooting
 - restart loops
-- application entrypoints
 - CPU troubleshooting
 - memory troubleshooting
 - filesystem troubleshooting
 - log growth analysis
-- DNS troubleshooting
-- TCP connectivity testing
-- network-layer isolation
+- container resource limits
 - Linux PID namespaces
 - `/proc` inspection
-- container resource limits
 - root-cause analysis
 - incident response
 - operational documentation
@@ -585,6 +632,10 @@ The focus is not only on building systems, but on diagnosing failures methodical
 
 ## Status
 
-Active hands-on cloud operations and incident-response lab.
+**Cloud Operations Lab v1 incident series complete.**
 
-**Completed incidents: 7**
+Completed incidents:
+
+```text
+8 / 8
+```
