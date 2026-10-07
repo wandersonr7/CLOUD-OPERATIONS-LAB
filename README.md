@@ -8,7 +8,7 @@ The project intentionally creates operational failures and documents how to inve
 
 Many infrastructure projects demonstrate how to deploy a service.
 
-This lab focuses on what happens when the service stops working.
+This lab focuses on what happens when the service stops working or when infrastructure reports an incorrect operational state.
 
 Each scenario follows an incident-response workflow:
 
@@ -53,7 +53,7 @@ Healthy response:
 }
 ```
 
-The default network path is:
+The normal network path is:
 
 ```text
 Client
@@ -71,12 +71,27 @@ Container :8080
 Flask application
 ```
 
+Docker also monitors the application through a container health check:
+
+```text
+Docker Health Check
+        |
+        v
+127.0.0.1:8080/health
+        |
+        v
+Flask
+        |
+        v
+healthy
+```
+
 ## Incident Progress
 
 | Incident | Scenario | Status |
 |---|---|---|
 | 01 | Service unreachable due to incorrect Docker port mapping | Completed |
-| 02 | Container health check failure | Planned |
+| 02 | Container health check failure | Completed |
 | 03 | Application process failure | Planned |
 | 04 | High CPU usage | Planned |
 | 05 | Memory pressure | Planned |
@@ -138,6 +153,87 @@ Full incident report:
 
 [Incident 01 — Service Unreachable Due to Incorrect Docker Port Mapping](incidents/01-service-unreachable-wrong-port.md)
 
+---
+
+### Incident 02 — Container Health Check Failure
+
+The application remained available and returned a successful health response, but Docker reported the container as:
+
+```text
+unhealthy
+```
+
+Application test:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8080/health
+```
+
+Result:
+
+```text
+status
+------
+ok
+```
+
+The investigation showed that Docker was testing:
+
+```text
+127.0.0.1:9999/health
+```
+
+while Flask was actually listening on:
+
+```text
+127.0.0.1:8080
+```
+
+The health-check execution history showed repeated:
+
+```text
+ConnectionRefusedError
+ExitCode=1
+```
+
+Root cause:
+
+```text
+Incorrect health-check port
+```
+
+Incorrect configuration:
+
+```yaml
+healthcheck:
+  test:
+    - CMD
+    - python
+    - -c
+    - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9999/health', timeout=2)"
+```
+
+Correct configuration:
+
+```yaml
+healthcheck:
+  test:
+    - CMD
+    - python
+    - -c
+    - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2)"
+```
+
+After the container was recreated, Docker reported:
+
+```text
+healthy
+```
+
+Full incident report:
+
+[Incident 02 — Container Health Check Failure](incidents/02-container-healthcheck-failure.md)
+
 ## Troubleshooting Method
 
 Each incident is investigated layer by layer.
@@ -163,6 +259,16 @@ Host Network
     v
 Client
 ```
+
+The lab also distinguishes between different operational signals.
+
+For example:
+
+```text
+Application health        !=        Container health status
+```
+
+A service may respond correctly while Docker reports it as unhealthy if the monitoring configuration itself is incorrect.
 
 This approach helps isolate failures instead of making changes before the root cause is understood.
 
@@ -227,6 +333,12 @@ Check the running container:
 docker ps
 ```
 
+A healthy container should eventually show:
+
+```text
+(healthy)
+```
+
 Test the health endpoint:
 
 ```bash
@@ -247,6 +359,12 @@ status
 ok
 ```
 
+Inspect container health:
+
+```bash
+docker inspect cloud-operations-lab
+```
+
 Stop the lab:
 
 ```bash
@@ -263,6 +381,7 @@ CLOUD-OPERATIONS-LAB/
 |
 +-- incidents/
 |   +-- 01-service-unreachable-wrong-port.md
+|   +-- 02-container-healthcheck-failure.md
 |
 +-- docs/
 |   +-- images/
@@ -300,8 +419,10 @@ This lab demonstrates practical work with:
 - container troubleshooting
 - Docker networking
 - port publishing
+- Docker health checks
 - application health checks
 - log inspection
+- configuration troubleshooting
 - service isolation
 - root-cause analysis
 - incident response
@@ -327,4 +448,4 @@ The focus is not only on building systems, but on understanding how to diagnose 
 
 Active hands-on cloud operations and incident-response lab.
 
-**Completed incidents: 1**
+**Completed incidents: 2**
