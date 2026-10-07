@@ -8,7 +8,7 @@ The project intentionally creates operational failures and documents how to inve
 
 Many infrastructure projects demonstrate how to deploy a service.
 
-This lab focuses on what happens when the service stops working, when infrastructure reports an incorrect operational state, or when the application is available but operating under resource pressure.
+This lab focuses on what happens when the service stops working, when infrastructure reports an incorrect operational state, or when the application remains available while the underlying system is under stress.
 
 Each scenario follows an incident-response workflow:
 
@@ -36,7 +36,7 @@ Prevention
 
 ## Current Lab Service
 
-The lab currently runs a small Flask application inside Docker.
+The lab runs a small Flask application inside Docker.
 
 Endpoints:
 
@@ -53,7 +53,7 @@ Healthy response:
 }
 ```
 
-The normal network path is:
+Normal request path:
 
 ```text
 Client
@@ -71,28 +71,13 @@ Container :8080
 Flask application
 ```
 
-Docker also monitors the application through a container health check:
+Docker also monitors the service with a health check.
 
-```text
-Docker Health Check
-        |
-        v
-127.0.0.1:8080/health
-        |
-        v
-Flask
-        |
-        v
-healthy
-```
-
-The container currently has a memory limit:
+The container currently has a memory limit of:
 
 ```text
 256 MiB
 ```
-
-This keeps memory experiments isolated from the host system.
 
 ## Incident Progress
 
@@ -103,7 +88,7 @@ This keeps memory experiments isolated from the host system.
 | 03 | Application process failure and restart loop | Completed |
 | 04 | High CPU usage | Completed |
 | 05 | Memory pressure | Completed |
-| 06 | Log growth / disk pressure | Planned |
+| 06 | Log growth and disk pressure | Completed |
 | 07 | DNS resolution failure | Planned |
 | 08 | Network connectivity failure | Planned |
 
@@ -113,26 +98,16 @@ This keeps memory experiments isolated from the host system.
 
 The application was healthy inside the container but unreachable from the host.
 
-Observed Docker mapping:
+Observed:
 
 ```text
 Host 8080 -> Container 8081
 ```
 
-Actual application listener:
+Actual listener:
 
 ```text
 Container 8080
-```
-
-Investigation used:
-
-```text
-docker ps
-docker logs
-docker inspect
-docker exec
-Invoke-RestMethod
 ```
 
 Root cause:
@@ -141,21 +116,7 @@ Root cause:
 Incorrect Docker Compose port mapping
 ```
 
-Incorrect configuration:
-
-```yaml
-ports:
-  - "8080:8081"
-```
-
-Correct configuration:
-
-```yaml
-ports:
-  - "8080:8080"
-```
-
-Full incident report:
+Full report:
 
 [Incident 01 — Service Unreachable Due to Incorrect Docker Port Mapping](incidents/01-service-unreachable-wrong-port.md)
 
@@ -169,13 +130,7 @@ The application remained available but Docker reported:
 unhealthy
 ```
 
-The application itself continued returning:
-
-```text
-ok
-```
-
-The investigation showed that Docker was testing:
+Docker was checking:
 
 ```text
 127.0.0.1:9999/health
@@ -187,26 +142,20 @@ while Flask was listening on:
 127.0.0.1:8080
 ```
 
-The Docker health-check history showed repeated:
-
-```text
-ConnectionRefusedError
-ExitCode=1
-```
-
 Root cause:
 
 ```text
 Incorrect health-check port
 ```
 
-After correcting the endpoint, Docker returned to:
+After correction:
 
 ```text
-healthy
+Container health: healthy
+Application health: ok
 ```
 
-Full incident report:
+Full report:
 
 [Incident 02 — Container Health Check Failure](incidents/02-container-healthcheck-failure.md)
 
@@ -214,15 +163,9 @@ Full incident report:
 
 ### Incident 03 — Application Process Failure and Restart Loop
 
-The container was successfully created, but the application did not start.
+The container was created successfully but the application did not start.
 
 Docker repeatedly restarted the container.
-
-Observed:
-
-```text
-Restarting (...)
-```
 
 Logs showed:
 
@@ -230,13 +173,11 @@ Logs showed:
 python: can't open file '/app/app/missing.py': [Errno 2] No such file or directory
 ```
 
-The container was configured to execute:
+The configured command was:
 
 ```json
 ["python","app/missing.py"]
 ```
-
-The restart count increased as Docker retried the failed process.
 
 Root cause:
 
@@ -244,7 +185,7 @@ Root cause:
 Invalid application entrypoint
 ```
 
-After removing the invalid command override:
+After remediation:
 
 ```text
 Container status: healthy
@@ -252,7 +193,7 @@ Application health: ok
 RestartCount: 0
 ```
 
-Full incident report:
+Full report:
 
 [Incident 03 — Application Process Failure and Restart Loop](incidents/03-application-process-restart-loop.md)
 
@@ -268,13 +209,7 @@ Observed:
 CPU: 99.82%
 ```
 
-Application health remained:
-
-```text
-ok
-```
-
-Process inspection identified a second Python process consuming approximately:
+Process inspection identified a Python process consuming approximately:
 
 ```text
 99.9% CPU
@@ -287,9 +222,7 @@ while True:
     pass
 ```
 
-The Flask application itself was using essentially no CPU.
-
-After terminating the CPU-bound process:
+After termination:
 
 ```text
 CPU: 0.01%
@@ -297,13 +230,13 @@ PIDS: 1
 Application health: ok
 ```
 
-This demonstrated that:
+This demonstrated:
 
 ```text
 Application health != Resource health
 ```
 
-Full incident report:
+Full report:
 
 [Incident 04 — High CPU Usage](incidents/04-high-cpu-usage.md)
 
@@ -311,63 +244,30 @@ Full incident report:
 
 ### Incident 05 — Memory Pressure
 
-The container remained healthy and the application continued responding while memory utilization rose above 80%.
+The container remained healthy while memory utilization rose above 80%.
 
-The container memory limit was:
+Memory limit:
 
 ```text
 256 MiB
 ```
 
-Verified through Docker:
-
-```text
-MemoryLimit=268435456 bytes
-```
-
-A background Python process allocated approximately:
-
-```text
-180 MiB
-```
-
-Docker reported:
+During the incident:
 
 ```text
 Memory: 213.3 MiB / 256 MiB
 Usage: 83.31%
 PIDS: 2
-```
-
-At the same time:
-
-```text
 Application health: ok
-CPU usage: normal
 ```
 
-The memory-consuming process was identified through:
+A background Python process had allocated approximately:
 
 ```text
-docker stats
-docker top
-docker exec
-/proc
+180 MiB
 ```
 
-Its internal container PID was:
-
-```text
-85
-```
-
-The process command showed a large allocation:
-
-```python
-data = bytearray(180 * 1024 * 1024)
-```
-
-After terminating the process:
+After termination:
 
 ```text
 Memory: 28.97 MiB / 256 MiB
@@ -376,23 +276,92 @@ PIDS: 1
 Application health: ok
 ```
 
-Only the normal Flask process remained:
-
-```text
-python app/main.py
-```
-
-The incident demonstrated that:
-
-```text
-Application health != Memory health
-```
-
-and showed how container memory limits reduce the blast radius of faulty processes.
-
-Full incident report:
+Full report:
 
 [Incident 05 — Memory Pressure](incidents/05-memory-pressure.md)
+
+---
+
+### Incident 06 — Log Growth and Disk Pressure
+
+The application remained healthy while a simulated log file caused significant growth in the container writable filesystem.
+
+Baseline:
+
+```text
+/var/log: 212K
+```
+
+A simulated application log grew to:
+
+```text
+64M
+```
+
+The log directory increased to:
+
+```text
+65M
+```
+
+Docker reported the writable container layer as:
+
+```text
+67.1MB
+```
+
+The application still returned:
+
+```text
+ok
+```
+
+The large file was identified using:
+
+```text
+df
+du
+ls
+docker ps -s
+```
+
+The main evidence was:
+
+```text
+/var/log/cloud-operations-lab.log   64M
+```
+
+After the oversized log was removed:
+
+```text
+/var/log:        212K
+Writable layer:  20.5kB
+Application:     healthy
+```
+
+This demonstrated that high-level filesystem percentages may hide abnormal local growth.
+
+The container filesystem was large enough that the `64 MiB` increase did not visibly change:
+
+```text
+df -h
+```
+
+from `1%`.
+
+Targeted inspection with:
+
+```text
+du
+ls
+docker ps -s
+```
+
+provided the useful evidence.
+
+Full report:
+
+[Incident 06 — Log Growth and Disk Pressure](incidents/06-log-growth-disk-pressure.md)
 
 ## Troubleshooting Method
 
@@ -420,36 +389,28 @@ Host Network
 Client
 ```
 
-Resource incidents add additional dimensions:
+Resource incidents add:
 
 ```text
 Operational Health
        |
        +--> Availability
-       |
        +--> CPU
-       |
        +--> Memory
-       |
        +--> Disk
-       |
        +--> Network
-       |
        +--> Logs
 ```
 
-Different signals are evaluated independently.
-
-For example:
+Different signals must be evaluated independently.
 
 ```text
-Application health != Container health status
+Application health != Container health
 Container running   != Application running
 Health endpoint ok  != CPU usage normal
 Health endpoint ok  != Memory usage normal
+Health endpoint ok  != Disk usage normal
 ```
-
-This approach helps isolate failures before changes are made.
 
 ## Lab Areas
 
@@ -462,7 +423,7 @@ The project covers or plans scenarios involving:
 - restart loops
 - CPU saturation
 - memory pressure
-- excessive log growth
+- log growth
 - disk pressure
 - DNS resolution
 - TCP connectivity
@@ -484,6 +445,7 @@ Current technologies:
 - Linux process inspection
 - Linux PID namespaces
 - `/proc`
+- filesystem inspection
 - container resource limits
 - HTTP
 - TCP/IP
@@ -492,10 +454,8 @@ Current technologies:
 
 Planned additions:
 
-- disk inspection
-- filesystem troubleshooting
-- system logs
 - DNS tools
+- network diagnostic tools
 - Prometheus
 - Grafana
 - GitHub Actions
@@ -517,13 +477,7 @@ Check container state:
 docker ps
 ```
 
-A healthy container should show:
-
-```text
-(healthy)
-```
-
-Test the application:
+Test the health endpoint:
 
 ```bash
 curl http://127.0.0.1:8080/health
@@ -535,15 +489,7 @@ Windows PowerShell:
 Invoke-RestMethod http://127.0.0.1:8080/health
 ```
 
-Expected:
-
-```text
-status
-------
-ok
-```
-
-Inspect resource usage:
+Inspect resources:
 
 ```bash
 docker stats cloud-operations-lab --no-stream
@@ -555,16 +501,28 @@ Inspect processes:
 docker top cloud-operations-lab
 ```
 
+Inspect filesystem usage:
+
+```bash
+docker exec cloud-operations-lab df -h /
+```
+
+Inspect directory sizes:
+
+```bash
+docker exec cloud-operations-lab du -sh /var/log
+```
+
+Inspect the writable container layer:
+
+```bash
+docker ps -s
+```
+
 Inspect logs:
 
 ```bash
 docker logs cloud-operations-lab
-```
-
-Inspect container configuration:
-
-```bash
-docker inspect cloud-operations-lab
 ```
 
 Stop the lab:
@@ -581,9 +539,7 @@ The lab currently uses:
 mem_limit: 256m
 ```
 
-This intentionally limits container memory consumption during troubleshooting exercises.
-
-Future incidents may introduce additional resource controls.
+This limits the impact of memory experiments on the host system.
 
 ## Project Structure
 
@@ -599,6 +555,7 @@ CLOUD-OPERATIONS-LAB/
 |   +-- 03-application-process-restart-loop.md
 |   +-- 04-high-cpu-usage.md
 |   +-- 05-memory-pressure.md
+|   +-- 06-log-growth-disk-pressure.md
 |
 +-- docs/
 |   +-- images/
@@ -643,17 +600,19 @@ This lab demonstrates practical work with:
 - application entrypoints
 - CPU troubleshooting
 - memory troubleshooting
+- filesystem troubleshooting
+- log growth analysis
+- container writable-layer analysis
 - container resource limits
-- process-level resource analysis
 - Linux PID namespaces
 - `/proc` inspection
-- Docker resource metrics
+- `df`
+- `du`
 - log inspection
 - configuration troubleshooting
 - root-cause analysis
 - incident response
 - HTTP troubleshooting
-- network troubleshooting
 - operational documentation
 - Git-based project management
 
@@ -674,4 +633,4 @@ The focus is not only on building systems, but on understanding how to diagnose 
 
 Active hands-on cloud operations and incident-response lab.
 
-**Completed incidents: 5**
+**Completed incidents: 6**
