@@ -92,7 +92,7 @@ healthy
 |---|---|---|
 | 01 | Service unreachable due to incorrect Docker port mapping | Completed |
 | 02 | Container health check failure | Completed |
-| 03 | Application process failure | Planned |
+| 03 | Application process failure and restart loop | Completed |
 | 04 | High CPU usage | Planned |
 | 05 | Memory pressure | Planned |
 | 06 | Log growth / disk pressure | Planned |
@@ -234,6 +234,80 @@ Full incident report:
 
 [Incident 02 — Container Health Check Failure](incidents/02-container-healthcheck-failure.md)
 
+---
+
+### Incident 03 — Application Process Failure and Restart Loop
+
+The container was successfully created, but the application never became available.
+
+Docker repeatedly restarted the container.
+
+Observed state:
+
+```text
+Restarting (...)
+```
+
+The application endpoint failed:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8080/health
+```
+
+Container logs showed:
+
+```text
+python: can't open file '/app/app/missing.py': [Errno 2] No such file or directory
+```
+
+The configured container command was:
+
+```json
+["python","app/missing.py"]
+```
+
+The restart count increased as Docker repeatedly attempted to execute the invalid command.
+
+Example:
+
+```text
+RestartCount=8
+```
+
+Root cause:
+
+```text
+Invalid application entrypoint
+```
+
+The Docker Compose configuration had overridden the normal application command:
+
+```yaml
+command:
+  - python
+  - app/missing.py
+```
+
+The referenced file did not exist.
+
+The invalid override was removed, allowing the container to return to the Dockerfile command:
+
+```dockerfile
+CMD ["python", "app/main.py"]
+```
+
+After the container was recreated:
+
+```text
+Container status: healthy
+Application health: ok
+RestartCount: 0
+```
+
+Full incident report:
+
+[Incident 03 — Application Process Failure and Restart Loop](incidents/03-application-process-restart-loop.md)
+
 ## Troubleshooting Method
 
 Each incident is investigated layer by layer.
@@ -260,17 +334,28 @@ Host Network
 Client
 ```
 
-The lab also distinguishes between different operational signals.
+Different operational signals are evaluated independently.
 
 For example:
 
 ```text
-Application health        !=        Container health status
+Application health != Container health status
 ```
 
-A service may respond correctly while Docker reports it as unhealthy if the monitoring configuration itself is incorrect.
+and:
 
-This approach helps isolate failures instead of making changes before the root cause is understood.
+```text
+Container created != Application process running
+```
+
+A container can exist while:
+
+- its application process has crashed
+- its health check is incorrect
+- its published network path is broken
+- it is trapped in a restart loop
+
+This approach helps isolate failures instead of changing multiple components before the root cause is understood.
 
 ## Lab Areas
 
@@ -280,6 +365,7 @@ The project will cover scenarios involving:
 - incorrect application ports
 - container health checks
 - application crashes
+- restart loops
 - CPU saturation
 - memory pressure
 - excessive log growth
@@ -365,6 +451,18 @@ Inspect container health:
 docker inspect cloud-operations-lab
 ```
 
+Inspect logs:
+
+```bash
+docker logs cloud-operations-lab
+```
+
+Inspect restart count:
+
+```bash
+docker inspect cloud-operations-lab --format 'Status={{.State.Status}} RestartCount={{.RestartCount}}'
+```
+
 Stop the lab:
 
 ```bash
@@ -382,6 +480,7 @@ CLOUD-OPERATIONS-LAB/
 +-- incidents/
 |   +-- 01-service-unreachable-wrong-port.md
 |   +-- 02-container-healthcheck-failure.md
+|   +-- 03-application-process-restart-loop.md
 |
 +-- docs/
 |   +-- images/
@@ -421,6 +520,9 @@ This lab demonstrates practical work with:
 - port publishing
 - Docker health checks
 - application health checks
+- process troubleshooting
+- container restart loops
+- entrypoint troubleshooting
 - log inspection
 - configuration troubleshooting
 - service isolation
@@ -448,4 +550,4 @@ The focus is not only on building systems, but on understanding how to diagnose 
 
 Active hands-on cloud operations and incident-response lab.
 
-**Completed incidents: 2**
+**Completed incidents: 3**
