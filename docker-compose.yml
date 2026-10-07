@@ -1,0 +1,7 @@
+services:
+  operations-lab:
+    build: .
+    container_name: cloud-operations-lab
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
