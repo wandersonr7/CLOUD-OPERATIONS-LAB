@@ -1,8 +1,22 @@
 # Cloud Operations Lab
 
+[![CI](https://github.com/wandersonr7/CLOUD-OPERATIONS-LAB/actions/workflows/ci.yml/badge.svg)](https://github.com/wandersonr7/CLOUD-OPERATIONS-LAB/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Cloud Operations Lab is a hands-on troubleshooting and incident-response environment designed to practice Linux, containers, networking, monitoring, logging, and cloud operations.
 
 The project intentionally creates operational failures and documents how to investigate, identify, fix, verify, and prevent them.
+
+## Portfolio Highlights
+
+- 8 documented infrastructure and application incidents
+- Docker and Docker Compose troubleshooting
+- Linux process and resource investigation
+- DNS, TCP, HTTP, and service-discovery diagnostics
+- CPU, memory, disk, and log-pressure analysis
+- Health-check and restart-loop troubleshooting
+- GitHub Actions CI validation
+- Reproducible root-cause analysis and recovery verification
 
 ## Purpose
 
@@ -428,14 +442,55 @@ DNS failure         != Network outage
 Container running   != Service listening
 ```
 
+## Continuous Integration
+
+GitHub Actions validates the project automatically on pushes to `main` and on pull requests.
+
+The workflow performs:
+
+```text
+Checkout repository
+        |
+        v
+Configure Python 3.12
+        |
+        v
+Install dependencies
+        |
+        v
+Compile Python application
+        |
+        v
+Build Docker image
+        |
+        v
+Start container with memory limit
+        |
+        v
+Wait for application
+        |
+        v
+Verify /health
+        |
+        v
+Collect container status and logs
+```
+
+The CI workflow is located at:
+
+```text
+.github/workflows/ci.yml
+```
+
 ## Technologies
 
 Current technologies:
 
-- Python
+- Python 3.12
 - Flask
 - Docker
 - Docker Compose
+- GitHub Actions
 - Linux process inspection
 - Linux PID namespaces
 - `/proc`
@@ -547,6 +602,10 @@ This limits the impact of memory experiments on the host system.
 ```text
 CLOUD-OPERATIONS-LAB/
 |
++-- .github/
+|   +-- workflows/
+|       +-- ci.yml
+|
 +-- app/
 |   +-- main.py
 |
@@ -569,6 +628,7 @@ CLOUD-OPERATIONS-LAB/
 +-- docker-compose.yml
 +-- requirements.txt
 +-- .gitignore
++-- LICENSE
 +-- README.md
 ```
 
@@ -612,6 +672,7 @@ This lab demonstrates practical work with:
 - container resource limits
 - Linux PID namespaces
 - `/proc` inspection
+- CI/CD validation
 - root-cause analysis
 - incident response
 - operational documentation
@@ -638,4 +699,16 @@ Completed incidents:
 
 ```text
 8 / 8
+```
+
+CI status:
+
+```text
+GitHub Actions: passing
+```
+
+License:
+
+```text
+MIT
 ```
