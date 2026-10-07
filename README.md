@@ -93,7 +93,7 @@ healthy
 | 01 | Service unreachable due to incorrect Docker port mapping | Completed |
 | 02 | Container health check failure | Completed |
 | 03 | Application process failure and restart loop | Completed |
-| 04 | High CPU usage | Planned |
+| 04 | High CPU usage | Completed |
 | 05 | Memory pressure | Planned |
 | 06 | Log growth / disk pressure | Planned |
 | 07 | DNS resolution failure | Planned |
@@ -202,29 +202,7 @@ Root cause:
 Incorrect health-check port
 ```
 
-Incorrect configuration:
-
-```yaml
-healthcheck:
-  test:
-    - CMD
-    - python
-    - -c
-    - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9999/health', timeout=2)"
-```
-
-Correct configuration:
-
-```yaml
-healthcheck:
-  test:
-    - CMD
-    - python
-    - -c
-    - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2)"
-```
-
-After the container was recreated, Docker reported:
+After correcting the health-check endpoint and recreating the container, Docker reported:
 
 ```text
 healthy
@@ -242,37 +220,25 @@ The container was successfully created, but the application never became availab
 
 Docker repeatedly restarted the container.
 
-Observed state:
+Observed:
 
 ```text
 Restarting (...)
 ```
 
-The application endpoint failed:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:8080/health
-```
-
-Container logs showed:
+Logs showed:
 
 ```text
 python: can't open file '/app/app/missing.py': [Errno 2] No such file or directory
 ```
 
-The configured container command was:
+The container command was:
 
 ```json
 ["python","app/missing.py"]
 ```
 
-The restart count increased as Docker repeatedly attempted to execute the invalid command.
-
-Example:
-
-```text
-RestartCount=8
-```
+The restart count increased as Docker continuously attempted to start the invalid command.
 
 Root cause:
 
@@ -280,23 +246,13 @@ Root cause:
 Invalid application entrypoint
 ```
 
-The Docker Compose configuration had overridden the normal application command:
-
-```yaml
-command:
-  - python
-  - app/missing.py
-```
-
-The referenced file did not exist.
-
-The invalid override was removed, allowing the container to return to the Dockerfile command:
+After removing the invalid command override, the container returned to:
 
 ```dockerfile
 CMD ["python", "app/main.py"]
 ```
 
-After the container was recreated:
+Verification:
 
 ```text
 Container status: healthy
@@ -307,6 +263,83 @@ RestartCount: 0
 Full incident report:
 
 [Incident 03 — Application Process Failure and Restart Loop](incidents/03-application-process-restart-loop.md)
+
+---
+
+### Incident 04 — High CPU Usage
+
+The container remained healthy and the application continued responding, but CPU utilization reached almost 100%.
+
+Observed with:
+
+```powershell
+docker stats cloud-operations-lab --no-stream
+```
+
+Result:
+
+```text
+CPU: 99.82%
+```
+
+At the same time:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8080/health
+```
+
+continued returning:
+
+```text
+ok
+```
+
+Process inspection showed:
+
+```text
+python app/main.py
+```
+
+using essentially no CPU.
+
+A second Python process was consuming approximately:
+
+```text
+99.9% CPU
+```
+
+The command contained:
+
+```python
+while True:
+    pass
+```
+
+This identified the source of the CPU saturation.
+
+The process was terminated using its PID inside the container.
+
+After remediation:
+
+```text
+CPU: 0.01%
+PIDS: 1
+Application health: ok
+```
+
+This incident demonstrated that:
+
+```text
+Application health != Resource health
+```
+
+A service may respond successfully while operating under severe resource pressure.
+
+It also demonstrated Linux PID namespaces. The same process appeared with different PID values inside the container and from the host.
+
+Full incident report:
+
+[Incident 04 — High CPU Usage](incidents/04-high-cpu-usage.md)
 
 ## Troubleshooting Method
 
@@ -334,32 +367,40 @@ Host Network
 Client
 ```
 
-Different operational signals are evaluated independently.
+Resource-related incidents add another dimension:
+
+```text
+Application availability
+        |
+        +--> health endpoint
+
+Container state
+        |
+        +--> running / healthy
+
+Resource state
+        |
+        +--> CPU
+        +--> memory
+        +--> disk
+        +--> process count
+```
+
+Different operational signals must be evaluated independently.
 
 For example:
 
 ```text
 Application health != Container health status
+Container running   != Application running
+Health endpoint ok  != Resource usage normal
 ```
-
-and:
-
-```text
-Container created != Application process running
-```
-
-A container can exist while:
-
-- its application process has crashed
-- its health check is incorrect
-- its published network path is broken
-- it is trapped in a restart loop
 
 This approach helps isolate failures instead of changing multiple components before the root cause is understood.
 
 ## Lab Areas
 
-The project will cover scenarios involving:
+The project covers or plans scenarios involving:
 
 - service availability
 - incorrect application ports
@@ -387,6 +428,8 @@ Current technologies:
 - Flask
 - Docker
 - Docker Compose
+- Linux process inspection
+- `/proc`
 - HTTP
 - TCP/IP
 - Git
@@ -394,8 +437,9 @@ Current technologies:
 
 Planned additions:
 
-- Linux troubleshooting tools
-- process inspection
+- additional Linux troubleshooting tools
+- memory analysis
+- disk inspection
 - system logs
 - DNS tools
 - Prometheus
@@ -445,10 +489,16 @@ status
 ok
 ```
 
-Inspect container health:
+Inspect resource usage:
 
 ```bash
-docker inspect cloud-operations-lab
+docker stats cloud-operations-lab --no-stream
+```
+
+Inspect processes:
+
+```bash
+docker top cloud-operations-lab
 ```
 
 Inspect logs:
@@ -457,10 +507,10 @@ Inspect logs:
 docker logs cloud-operations-lab
 ```
 
-Inspect restart count:
+Inspect container state:
 
 ```bash
-docker inspect cloud-operations-lab --format 'Status={{.State.Status}} RestartCount={{.RestartCount}}'
+docker inspect cloud-operations-lab
 ```
 
 Stop the lab:
@@ -481,6 +531,7 @@ CLOUD-OPERATIONS-LAB/
 |   +-- 01-service-unreachable-wrong-port.md
 |   +-- 02-container-healthcheck-failure.md
 |   +-- 03-application-process-restart-loop.md
+|   +-- 04-high-cpu-usage.md
 |
 +-- docs/
 |   +-- images/
@@ -523,6 +574,11 @@ This lab demonstrates practical work with:
 - process troubleshooting
 - container restart loops
 - entrypoint troubleshooting
+- CPU troubleshooting
+- process-level resource analysis
+- Linux PID namespaces
+- `/proc` inspection
+- Docker resource metrics
 - log inspection
 - configuration troubleshooting
 - service isolation
@@ -550,4 +606,4 @@ The focus is not only on building systems, but on understanding how to diagnose 
 
 Active hands-on cloud operations and incident-response lab.
 
-**Completed incidents: 3**
+**Completed incidents: 4**
