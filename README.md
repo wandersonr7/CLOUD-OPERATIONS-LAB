@@ -8,7 +8,7 @@ The project intentionally creates operational failures and documents how to inve
 
 Many infrastructure projects demonstrate how to deploy a service.
 
-This lab focuses on what happens when the service stops working, when infrastructure reports an incorrect operational state, or when the application remains available while the underlying system is under stress.
+This lab focuses on what happens when the service stops working, when infrastructure reports an incorrect operational state, or when the application remains available while the underlying system is degraded.
 
 Each scenario follows an incident-response workflow:
 
@@ -89,7 +89,7 @@ The container currently has a memory limit of:
 | 04 | High CPU usage | Completed |
 | 05 | Memory pressure | Completed |
 | 06 | Log growth and disk pressure | Completed |
-| 07 | DNS resolution failure | Planned |
+| 07 | DNS resolution failure | Completed |
 | 08 | Network connectivity failure | Planned |
 
 ## Completed Incidents
@@ -102,12 +102,6 @@ Observed:
 
 ```text
 Host 8080 -> Container 8081
-```
-
-Actual listener:
-
-```text
-Container 8080
 ```
 
 Root cause:
@@ -124,11 +118,7 @@ Full report:
 
 ### Incident 02 — Container Health Check Failure
 
-The application remained available but Docker reported:
-
-```text
-unhealthy
-```
+The application remained available while Docker reported the container as unhealthy.
 
 Docker was checking:
 
@@ -148,13 +138,6 @@ Root cause:
 Incorrect health-check port
 ```
 
-After correction:
-
-```text
-Container health: healthy
-Application health: ok
-```
-
 Full report:
 
 [Incident 02 — Container Health Check Failure](incidents/02-container-healthcheck-failure.md)
@@ -163,20 +146,12 @@ Full report:
 
 ### Incident 03 — Application Process Failure and Restart Loop
 
-The container was created successfully but the application did not start.
-
-Docker repeatedly restarted the container.
+Docker repeatedly restarted the container because the configured application entrypoint did not exist.
 
 Logs showed:
 
 ```text
-python: can't open file '/app/app/missing.py': [Errno 2] No such file or directory
-```
-
-The configured command was:
-
-```json
-["python","app/missing.py"]
+python: can't open file '/app/app/missing.py'
 ```
 
 Root cause:
@@ -201,39 +176,25 @@ Full report:
 
 ### Incident 04 — High CPU Usage
 
-The application remained healthy while container CPU utilization reached nearly 100%.
-
-Observed:
+The application remained healthy while CPU utilization reached approximately:
 
 ```text
-CPU: 99.82%
+99.82%
 ```
 
-Process inspection identified a Python process consuming approximately:
-
-```text
-99.9% CPU
-```
-
-The process contained:
+Process-level investigation identified a background Python process executing:
 
 ```python
 while True:
     pass
 ```
 
-After termination:
+After terminating it:
 
 ```text
 CPU: 0.01%
 PIDS: 1
 Application health: ok
-```
-
-This demonstrated:
-
-```text
-Application health != Resource health
 ```
 
 Full report:
@@ -244,9 +205,7 @@ Full report:
 
 ### Incident 05 — Memory Pressure
 
-The container remained healthy while memory utilization rose above 80%.
-
-Memory limit:
+The container memory limit was:
 
 ```text
 256 MiB
@@ -257,22 +216,14 @@ During the incident:
 ```text
 Memory: 213.3 MiB / 256 MiB
 Usage: 83.31%
-PIDS: 2
 Application health: ok
 ```
 
-A background Python process had allocated approximately:
-
-```text
-180 MiB
-```
-
-After termination:
+After identifying and terminating the memory-consuming process:
 
 ```text
 Memory: 28.97 MiB / 256 MiB
 Usage: 11.32%
-PIDS: 1
 Application health: ok
 ```
 
@@ -284,84 +235,111 @@ Full report:
 
 ### Incident 06 — Log Growth and Disk Pressure
 
-The application remained healthy while a simulated log file caused significant growth in the container writable filesystem.
-
-Baseline:
-
-```text
-/var/log: 212K
-```
-
-A simulated application log grew to:
+A simulated log file grew to:
 
 ```text
 64M
 ```
 
-The log directory increased to:
+The `/var/log` directory increased from:
+
+```text
+212K
+```
+
+to:
 
 ```text
 65M
 ```
 
-Docker reported the writable container layer as:
+Docker reported the writable layer growing to:
 
 ```text
 67.1MB
 ```
 
-The application still returned:
+After cleanup:
 
 ```text
-ok
+/var/log:       212K
+Writable layer: 20.5kB
+Application:    healthy
 ```
-
-The large file was identified using:
-
-```text
-df
-du
-ls
-docker ps -s
-```
-
-The main evidence was:
-
-```text
-/var/log/cloud-operations-lab.log   64M
-```
-
-After the oversized log was removed:
-
-```text
-/var/log:        212K
-Writable layer:  20.5kB
-Application:     healthy
-```
-
-This demonstrated that high-level filesystem percentages may hide abnormal local growth.
-
-The container filesystem was large enough that the `64 MiB` increase did not visibly change:
-
-```text
-df -h
-```
-
-from `1%`.
-
-Targeted inspection with:
-
-```text
-du
-ls
-docker ps -s
-```
-
-provided the useful evidence.
 
 Full report:
 
 [Incident 06 — Log Growth and Disk Pressure](incidents/06-log-growth-disk-pressure.md)
+
+---
+
+### Incident 07 — DNS Resolution Failure
+
+The container lost hostname resolution while general TCP connectivity remained functional.
+
+Normal DNS:
+
+```text
+example.com -> IP address
+```
+
+After changing the resolver:
+
+```text
+socket.gaierror:
+Temporary failure in name resolution
+```
+
+However, direct TCP connectivity still worked:
+
+```text
+TCP 1.1.1.1:443 = OK
+```
+
+The application also remained:
+
+```text
+healthy
+```
+
+The diagnosis was therefore:
+
+```text
+DNS           FAIL
+TCP           OK
+Application   OK
+```
+
+The container resolver had been changed from Docker's internal resolver:
+
+```text
+127.0.0.11
+```
+
+to a non-functional resolver.
+
+After restoring the original resolver:
+
+```text
+DNS           OK
+TCP           OK
+Application   OK
+Container     healthy
+```
+
+This incident demonstrated how to distinguish:
+
+```text
+DNS failure
+vs
+TCP failure
+vs
+Application failure
+```
+
+Full report:
+
+[Incident 07 — DNS Resolution Failure](incidents/07-dns-resolution-failure.md)
 
 ## Troubleshooting Method
 
@@ -377,13 +355,16 @@ Process
 Container
     |
     v
-Container Network
+DNS
+    |
+    v
+Network
     |
     v
 Port Publishing
     |
     v
-Host Network
+Host
     |
     v
 Client
@@ -398,6 +379,7 @@ Operational Health
        +--> CPU
        +--> Memory
        +--> Disk
+       +--> DNS
        +--> Network
        +--> Logs
 ```
@@ -410,29 +392,8 @@ Container running   != Application running
 Health endpoint ok  != CPU usage normal
 Health endpoint ok  != Memory usage normal
 Health endpoint ok  != Disk usage normal
+DNS failure         != Network outage
 ```
-
-## Lab Areas
-
-The project covers or plans scenarios involving:
-
-- service availability
-- incorrect application ports
-- container health checks
-- application crashes
-- restart loops
-- CPU saturation
-- memory pressure
-- log growth
-- disk pressure
-- DNS resolution
-- TCP connectivity
-- HTTP errors
-- permissions
-- configuration errors
-- monitoring
-- alerting
-- incident documentation
 
 ## Technologies
 
@@ -446,6 +407,8 @@ Current technologies:
 - Linux PID namespaces
 - `/proc`
 - filesystem inspection
+- DNS troubleshooting
+- TCP connectivity testing
 - container resource limits
 - HTTP
 - TCP/IP
@@ -454,8 +417,7 @@ Current technologies:
 
 Planned additions:
 
-- DNS tools
-- network diagnostic tools
+- additional network diagnostics
 - Prometheus
 - Grafana
 - GitHub Actions
@@ -477,7 +439,7 @@ Check container state:
 docker ps
 ```
 
-Test the health endpoint:
+Test health:
 
 ```bash
 curl http://127.0.0.1:8080/health
@@ -501,22 +463,16 @@ Inspect processes:
 docker top cloud-operations-lab
 ```
 
-Inspect filesystem usage:
+Inspect filesystem:
 
 ```bash
 docker exec cloud-operations-lab df -h /
 ```
 
-Inspect directory sizes:
+Inspect DNS:
 
 ```bash
-docker exec cloud-operations-lab du -sh /var/log
-```
-
-Inspect the writable container layer:
-
-```bash
-docker ps -s
+docker exec cloud-operations-lab cat /etc/resolv.conf
 ```
 
 Inspect logs:
@@ -525,7 +481,7 @@ Inspect logs:
 docker logs cloud-operations-lab
 ```
 
-Stop the lab:
+Stop:
 
 ```bash
 docker compose down
@@ -556,6 +512,7 @@ CLOUD-OPERATIONS-LAB/
 |   +-- 04-high-cpu-usage.md
 |   +-- 05-memory-pressure.md
 |   +-- 06-log-growth-disk-pressure.md
+|   +-- 07-dns-resolution-failure.md
 |
 +-- docs/
 |   +-- images/
@@ -596,23 +553,20 @@ This lab demonstrates practical work with:
 - Docker health checks
 - application health checks
 - process troubleshooting
-- container restart loops
+- restart loops
 - application entrypoints
 - CPU troubleshooting
 - memory troubleshooting
 - filesystem troubleshooting
 - log growth analysis
-- container writable-layer analysis
-- container resource limits
+- DNS troubleshooting
+- TCP connectivity testing
+- network-layer isolation
 - Linux PID namespaces
 - `/proc` inspection
-- `df`
-- `du`
-- log inspection
-- configuration troubleshooting
+- container resource limits
 - root-cause analysis
 - incident response
-- HTTP troubleshooting
 - operational documentation
 - Git-based project management
 
@@ -627,10 +581,10 @@ This repository demonstrates troubleshooting skills relevant to roles such as:
 - Infrastructure Support Engineer
 - Site Reliability Engineering intern or junior roles
 
-The focus is not only on building systems, but on understanding how to diagnose and recover them when something goes wrong.
+The focus is not only on building systems, but on diagnosing failures methodically and proving recovery with observable evidence.
 
 ## Status
 
 Active hands-on cloud operations and incident-response lab.
 
-**Completed incidents: 6**
+**Completed incidents: 7**
