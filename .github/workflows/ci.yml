@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compile Python
+        run: |
+          python -m compileall app
+
+      - name: Build Docker image
+        run: |
+          docker build -t cloud-operations-lab:test .
+
+      - name: Start container
+        run: |
+          docker run -d \
+            --name cloud-operations-lab \
+            -p 8080:8080 \
+            --memory 256m \
+            cloud-operations-lab:test
+
+      - name: Wait for application
+        run: |
+          for i in {1..20}; do
+            if curl --fail http://127.0.0.1:8080/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker logs cloud-operations-lab
+          exit 1
+
+      - name: Verify health endpoint
+        run: |
+          curl --fail http://127.0.0.1:8080/health
+
+      - name: Show container status
+        if: always()
+        run: |
+          docker ps -a
+
+      - name: Show container logs
+        if: always()
+        run: |
+          docker logs cloud-operations-lab || true
