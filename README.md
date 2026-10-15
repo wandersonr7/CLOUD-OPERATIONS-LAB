@@ -87,6 +87,8 @@ Flask application
 
 Docker also monitors the service with a health check.
 
+![Healthy baseline: container healthy, /health ok, docker stats](docs/images/healthy-baseline.png)
+
 The container currently has a memory limit of:
 
 ```text
@@ -482,6 +484,8 @@ The CI workflow is located at:
 .github/workflows/ci.yml
 ```
 
+![GitHub Actions CI run passing](docs/images/ci-passing.png)
+
 ## Technologies
 
 Current technologies:
@@ -621,8 +625,6 @@ CLOUD-OPERATIONS-LAB/
 |
 +-- docs/
 |   +-- images/
-|
-+-- scripts/
 |
 +-- Dockerfile
 +-- docker-compose.yml
