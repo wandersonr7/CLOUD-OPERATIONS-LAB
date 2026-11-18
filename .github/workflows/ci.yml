@@ -68,3 +68,33 @@ jobs:
         if: always()
         run: |
           docker logs cloud-operations-lab || true
+
+  incident-drills:
+    name: drill ${{ matrix.incident }}
+    needs: validate
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        incident: ["01", "02", "03", "04", "05", "06", "07", "08", "09"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Break, detect, fix and verify
+        run: |
+          bash chaos/lab.sh drill ${{ matrix.incident }}
+
+      - name: Show container state
+        if: failure()
+        run: |
+          docker ps -a
+          docker logs cloud-operations-lab || true
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose down || true
+          docker rm -f lab-dependency || true
