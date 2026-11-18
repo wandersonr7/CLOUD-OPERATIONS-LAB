@@ -7,9 +7,37 @@ Cloud Operations Lab is a hands-on troubleshooting and incident-response environ
 
 The project intentionally creates operational failures and documents how to investigate, identify, fix, verify, and prevent them.
 
+## At a Glance
+
+- **9 incidents**, each with a full root-cause report: ports, health checks, restart loops, CPU, memory, disk, DNS, internal networking and network exposure.
+- **Every incident is reproducible with one command.** `chaos/lab.sh drill 04` breaks the service, proves the failure is detectable, applies the fix and re-verifies every operational signal.
+- **CI replays all 9 incidents on every push.** Each one runs as its own GitHub Actions job: break → detect → fix → verify.
+
+```bash
+bash chaos/lab.sh drill 07
+```
+
+```text
+[lab] drill 07: DNS resolution failure
+[lab] starting healthy baseline
+[ ok ] baseline healthy
+[lab] injecting failure
+[ ok ] failure signal detected
+[lab] applying resolution
+[ ok ] host -> /health reachable
+[ ok ] docker health: healthy
+[ ok ] published on 127.0.0.1 only
+[ ok ] cpu below 50%
+[ ok ] memory below 150 MiB
+[ ok ] /var/log below 50 MiB
+[ ok ] dns resolves example.com
+[ ok ] drill 07 passed (detected in 2s)
+```
+
 ## Portfolio Highlights
 
-- 8 documented infrastructure and application incidents
+- 9 documented infrastructure, application and security incidents
+- One-command reproducible incident drills, replayed in CI
 - Docker and Docker Compose troubleshooting
 - Linux process and resource investigation
 - DNS, TCP, HTTP, and service-discovery diagnostics
@@ -107,6 +135,7 @@ The container currently has a memory limit of:
 | 06 | Log growth and disk pressure | Completed |
 | 07 | DNS resolution failure | Completed |
 | 08 | Internal network connectivity failure | Completed |
+| 09 | Service exposed on all network interfaces | Completed |
 
 ## Completed Incidents
 
@@ -389,6 +418,74 @@ Full report:
 
 [Incident 08 — Internal Network Connectivity Failure](incidents/08-network-connectivity-failure.md)
 
+---
+
+### Incident 09 — Service Exposed on All Network Interfaces
+
+A review of running services found the lab published on every host interface. All health signals were green: the problem was exposure, not availability.
+
+Observed:
+
+```text
+8080/tcp -> 0.0.0.0:8080
+8080/tcp -> [::]:8080
+```
+
+Root cause:
+
+```text
+Compose mapping "8080:8080" binds to 0.0.0.0 when no host IP is given
+```
+
+After restricting the binding to `127.0.0.1:8080:8080`:
+
+```text
+8080/tcp -> 127.0.0.1:8080
+Application health: ok
+```
+
+This demonstrated:
+
+```text
+Health check ok != Safely exposed
+```
+
+Full report:
+
+[Incident 09 — Service Exposed on All Network Interfaces](incidents/09-service-exposed-all-interfaces.md)
+
+## Reproducible Incident Drills
+
+Every incident can be replayed on demand with `chaos/lab.sh` (Git Bash on Windows, any shell on Linux/macOS):
+
+```bash
+bash chaos/lab.sh list          # list incidents
+bash chaos/lab.sh up            # start healthy baseline
+bash chaos/lab.sh break 05      # inject memory pressure
+bash chaos/lab.sh detect 05     # confirm the failure signal
+bash chaos/lab.sh fix 05        # apply the documented resolution
+bash chaos/lab.sh verify        # check every operational signal
+bash chaos/lab.sh drill 05      # all of the above, end to end
+```
+
+With `make`: `make drill-05`, `make drill-all`.
+
+How each failure is injected:
+
+| Incident | Injection |
+|---|---|
+| 01 | Compose override maps host `8080` to container `8081` |
+| 02 | Compose override points the health check at port `9999` |
+| 03 | Compose override sets the entrypoint to `app/missing.py` |
+| 04 | Busy-loop Python process inside the container |
+| 05 | Process allocating 180 MiB under a 256 MiB limit |
+| 06 | 64 MiB log file written to `/var/log` |
+| 07 | `/etc/resolv.conf` pointed at an unreachable nameserver |
+| 08 | Dependency container whose HTTP process is killed |
+| 09 | Compose override publishes the port on `0.0.0.0` |
+
+The `verify` step checks host reachability, Docker health, loopback-only binding, CPU, memory, log size and DNS. A drill passes only when the failure is detected **and** every signal returns to baseline.
+
 ## Troubleshooting Method
 
 Each incident is investigated layer by layer.
@@ -477,6 +574,8 @@ Verify /health
         v
 Collect container status and logs
 ```
+
+A second job, `incident-drills`, runs after validation. It replays all 9 incidents in parallel, one job per incident, using `chaos/lab.sh drill <id>`.
 
 The CI workflow is located at:
 
@@ -613,6 +712,10 @@ CLOUD-OPERATIONS-LAB/
 +-- app/
 |   +-- main.py
 |
++-- chaos/
+|   +-- lab.sh
+|   +-- overrides/
+|
 +-- incidents/
 |   +-- 01-service-unreachable-wrong-port.md
 |   +-- 02-container-healthcheck-failure.md
@@ -622,12 +725,14 @@ CLOUD-OPERATIONS-LAB/
 |   +-- 06-log-growth-disk-pressure.md
 |   +-- 07-dns-resolution-failure.md
 |   +-- 08-network-connectivity-failure.md
+|   +-- 09-service-exposed-all-interfaces.md
 |
 +-- docs/
 |   +-- images/
 |
 +-- Dockerfile
 +-- docker-compose.yml
++-- Makefile
 +-- requirements.txt
 +-- .gitignore
 +-- LICENSE
@@ -695,12 +800,12 @@ The focus is not only on building systems, but on diagnosing failures methodical
 
 ## Status
 
-**Cloud Operations Lab v1 incident series complete.**
+**Cloud Operations Lab v1 incident series complete. All incidents reproducible and replayed in CI.**
 
 Completed incidents:
 
 ```text
-8 / 8
+9 / 9
 ```
 
 CI status:

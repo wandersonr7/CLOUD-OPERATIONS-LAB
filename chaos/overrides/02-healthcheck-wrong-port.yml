@@ -1,0 +1,9 @@
+# Incident 02: health check probes a port the application does not use.
+services:
+  operations-lab:
+    healthcheck:
+      test: !override
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9999/health', timeout=2)"

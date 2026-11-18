@@ -3,7 +3,7 @@ services:
     build: .
     container_name: cloud-operations-lab
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     restart: unless-stopped
     mem_limit: 256m
     healthcheck:
