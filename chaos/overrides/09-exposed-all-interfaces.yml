@@ -1,0 +1,5 @@
+# Incident 09: service published on every host interface (0.0.0.0).
+services:
+  operations-lab:
+    ports: !override
+      - "8080:8080"

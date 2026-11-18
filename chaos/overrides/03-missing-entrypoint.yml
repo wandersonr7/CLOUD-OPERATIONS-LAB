@@ -1,0 +1,4 @@
+# Incident 03: container entrypoint points to a file that does not exist.
+services:
+  operations-lab:
+    command: ["python", "app/missing.py"]
