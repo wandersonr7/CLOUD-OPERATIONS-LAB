@@ -13,6 +13,10 @@ The project intentionally creates operational failures and documents how to inve
 - **Every incident is reproducible with one command.** `chaos/lab.sh drill 04` breaks the service, proves the failure is detectable, applies the fix and re-verifies every operational signal.
 - **CI replays all 9 incidents on every push.** Each one runs as its own GitHub Actions job: break → detect → fix → verify.
 
+![Drill 07: DNS failure injected, detected and fixed, then every signal re-verified](docs/images/drill-07-dns.gif)
+
+*Recorded from a real run of drill 07. Long waits are shortened; the output and its order are unchanged.*
+
 ```bash
 bash chaos/lab.sh drill 07
 ```
